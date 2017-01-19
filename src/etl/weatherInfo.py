@@ -8,7 +8,7 @@ from pyspark.context import SparkContext
 from pyspark.sql.context import SQLContext
 import shutil
 
-from smarthome.sparkETL import filterone
+from etl.sparkETL import filterone
 
 
 def addNoToSequence(record):

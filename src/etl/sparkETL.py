@@ -137,7 +137,7 @@ def mapone(line):
 
     
 if __name__ == "__main__":
-    file_dir = "/home/xuepeng/Desktop/smarthome"
+    file_dir = "/home/xuepeng/Desktop/etl"
     file_weather = "./china_dec_weather.txt"
     sc = SparkContext("local[20]", "First Spark App")
     #original Data
