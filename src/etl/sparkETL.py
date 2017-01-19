@@ -4,7 +4,6 @@
 
 import os, codecs
 from pyspark import  SparkContext
-import shutil
 from datetime import datetime
 
 
@@ -59,10 +58,11 @@ def processfile(record):
                 province = address[2:4]
                 city = address[4:]
 
-    with codecs.open('results.txt',"a+","utf-8") as f1:
-        for item in data:
-            string = ','.join(item).encode('utf8')
-            print >> f1,string.decode('utf8')
+    return data
+#     with codecs.open('results.txt',"a+","utf-8") as f1:
+#         for item in data:
+#             string = ','.join(item).encode('utf8')
+#             print >> f1,string.decode('utf8')
 
 #把列表转换为str类型
 def map_list_string(record):
@@ -137,8 +137,8 @@ def mapone(line):
 
     
 if __name__ == "__main__":
-    file_dir = "/home/xuepeng/Desktop/etl"
-    file_weather = "./china_dec_weather.txt"
+    file_dir = "/home/xuepeng/Desktop/smarthome"
+    file_weather = "/home/xuepeng/Desktop/weather/china_dec_weather.txt"
     sc = SparkContext("local[20]", "First Spark App")
     #original Data
     raw_data = sc.wholeTextFiles(file_dir)
@@ -154,10 +154,16 @@ if __name__ == "__main__":
         os.remove('./first_results.txt')
 #     if os.path.exists('./output_weather'):#modifyed by Xueping
 #         shutil.rmtree('./output_weather') #modifyed by Xueping
-    raw_data.foreach(processfile)
+#     raw_data.foreach(processfile)
 
-    firstStepData = sc.textFile('./results.txt').\
-                    map(lambda line: line.split(",")).\
+#     firstStepData = sc.textFile('./results.txt').\
+#                     map(lambda line: line.split(",")).\
+#                     filter(filterone).map(lambda line:(line[0],line)).\
+#                     groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
+#                     map(lambda item: (str(len(item[1])),item[1])).\
+#                     flatMapValues(lambda item:item).map(addNoToSequence)
+                    
+    firstStepData = raw_data.flatMap(processfile).\
                     filter(filterone).map(lambda line:(line[0],line)).\
                     groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
                     map(lambda item: (str(len(item[1])),item[1])).\

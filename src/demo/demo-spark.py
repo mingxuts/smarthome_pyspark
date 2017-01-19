@@ -7,7 +7,7 @@ from pyspark import  SparkContext
 import shutil
 from datetime import datetime
 from pyspark.mllib.tree import RandomForest
-from pyspark.mllib.util import MLUtils
+from pyspark.mllib.regression import LabeledPoint
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
 def processfile(record):
@@ -60,10 +60,7 @@ def processfile(record):
                 province = address[2:4]
                 city = address[4:]
 
-    with codecs.open('results.txt',"a+","utf-8") as f1:
-        for item in data:
-            string = ','.join(item).encode('utf8')
-            print >> f1,string.decode('utf8')
+    return data
 
 #把列表转换为str类型
 def map_list_string(record):
@@ -186,40 +183,29 @@ def filterTemp(item):
         return False
     
 def transformer(item):
-    item[0] = str(int(item[0])-24)
-    item[1] = str(int(item[1])-24)
-    item[2] = str(int(item[2])-24)
-    item[3] = str(speed[item[3]])
-    item[4] = str(speed[item[4]])
-    item[5] = str(speed[item[5]])
-    item[6] = str(direction[item[6]])
-    item[7] = str(direction[item[7]])
-    item[8] = str(direction[item[8]])
-    item[9] = str(mode[item[9]])
-    item[10] = str(mode[item[10]])
-    item[11] = str(mode[item[11]])
-  
-    item[13] = str(speed[item[13]])
-    item[14] = str(direction[item[14]])
-    item[15] = str(mode[item[15]])
-    item[16] = str(int(item[16])-24)
+    item[0] = int(item[0])-24
+    item[1] = int(item[1])-24
+    item[2] = int(item[2])-24
+    item[3] = speed[item[3]]
+    item[4] = speed[item[4]]
+    item[5] = speed[item[5]]
+    item[6] = direction[item[6]]
+    item[7] = direction[item[7]]
+    item[8] = direction[item[8]]
+    item[9] = mode[item[9]]
+    item[10] = mode[item[10]]
+    item[11] = mode[item[11]]
+    item[12] = int(item[12])
+    item[13] = speed[item[13]]
+    item[14] = direction[item[14]]
+    item[15] = mode[item[15]]
+    item[16] = int(item[16])-24
     return item
-
-def labelCombination(s):
-        
-        classLabel = int(s[-1])*90+int(s[-2])*1+int(s[-3])*5+int(s[-4])*15       
-        s.pop()
-        s.pop()
-        s.pop()
-        s.pop()        
-        s.append(str(classLabel))        
-        return s
     
-def myFunc(words):
-#     words = s.split(",")
-    return words[-1]+' 1:'+words[0]+' 2:'+words[1]+' 3:'+words[2]+' 4:'+words[3] +' 5:'+words[4]+' 6:'+words[5]+' 7:'+words[6]+' 8:'+words[7] +' 9:'+words[8]+' 10:'+words[9]+' 11:'+words[10]+' 12:'+words[11]+' 13:'+words[12]
-  
-
+def labelPoints(item):
+        classLabel = item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15       
+        return LabeledPoint(classLabel,item[0:13])
+    
     
 if __name__ == "__main__":
     file_dir = "/home/xuepeng/Desktop/smarthome"
@@ -230,17 +216,8 @@ if __name__ == "__main__":
     #weather information
     data_weather = sc.textFile(file_weather).map(lambda line: line.split(","))\
                      .map(lambda line:(line[0]+" "+line[1],line)).cache()
- 
-    if os.path.exists('./results.txt'):
-        os.remove('./results.txt')
-    if os.path.exists('./libSVMFile_results.txt'):
-        os.remove('./libSVMFile_results.txt')
-#     if os.path.exists('./output_weather'):#modifyed by Xueping
-#         shutil.rmtree('./output_weather') #modifyed by Xueping
-    raw_data.foreach(processfile)
 
-    firstStepData = sc.textFile('./results.txt').\
-                    map(lambda line: line.split(",")).\
+    firstStepData = raw_data.flatMap(processfile).\
                     filter(filterone).map(lambda line:(line[0],line)).\
                     groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
                     map(lambda item: (str(len(item[1])),item[1])).\
@@ -256,14 +233,8 @@ if __name__ == "__main__":
                     .groupByKey().mapValues(list).map(lambda item:item[1])\
                     .flatMap(dataPrepareStepOne)
                     
-    stepOneDataLimitedTemp = stepOneData.filter(filterTemp).map(transformer).map(labelCombination).map(myFunc)
+    data = stepOneData.filter(filterTemp).map(transformer).map(labelPoints)
     
-    with codecs.open('./libSVMFile_results.txt',"w","utf-8") as f1:
-        for item in stepOneDataLimitedTemp.collect():
-#             string = ','.join(item).encode('utf8')
-            print >> f1,item.decode('utf8')
-    
-    data = MLUtils.loadLibSVMFile(sc, './libSVMFile_results.txt')
     # Split the data into training and test sets (30% held out for testing)
     (trainingData, testData) = data.randomSplit([0.7, 0.3])
 
@@ -278,8 +249,7 @@ if __name__ == "__main__":
     # Evaluate model on test instances and compute test error
     predictions = model.predict(testData.map(lambda x: x.features))
     labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
-    testErr = labelsAndPredictions.filter(
-        lambda lp: lp[0] != lp[1]).count() / float(testData.count())
+    testErr = labelsAndPredictions.filter(lambda lp: lp[0] != lp[1]).count() / float(testData.count())
     print('Test Error = ' + str(testErr))
     print('Learned classification forest model:')
 
