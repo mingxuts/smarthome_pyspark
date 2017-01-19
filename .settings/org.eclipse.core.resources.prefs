@@ -1,2 +1,3 @@
 eclipse.preferences.version=1
-encoding//src/smarthome/etlstart_modified.py=UTF-8
+encoding//src/demo/demo-spark.py=UTF-8
+encoding//src/smarthome/sparkETL.py=UTF-8

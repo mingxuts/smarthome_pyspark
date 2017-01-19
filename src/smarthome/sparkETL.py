@@ -5,6 +5,7 @@
 import os, codecs
 from pyspark import  SparkContext
 import shutil
+from datetime import datetime
 
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
@@ -70,10 +71,14 @@ def map_list_string(record):
     return string
 
 #add number of sequence
-def addNoOfSequence(record):
+def addNoOfSequenceToString(record):
     record[1].insert(0,record[0])
     string = u','.join(record[1]).encode('utf8')
     return string
+
+def addNoToSequence(record):
+    record[1].insert(0,record[0])
+    return record[1]
 
 #过滤序列长度小于2的项
 def filterone(line):
@@ -84,25 +89,95 @@ def filterone(line):
             return False
     except Exception:
         print line
+        
+#filter invaild line
+def filterline(line):
+    for item in line[1]:
+        if len(item) == 8:
+            continue
+        return True
+    return False
+
+#find the right weather information
+def fine_weather(line,time):
+    time_delta = 0
+    index_f = 0
+    haveWeatherInfo = False
+    time_user = datetime.strptime(str(time),"%Y-%m-%d %H:%M")
+    for index,item in enumerate(line):
+        if len(item) == 8:
+            haveWeatherInfo = True
+            time_weather_str = str(item[1]+" "+item[2])
+            time_delta_tmp = 0
+            time_weather = datetime.strptime(time_weather_str,"%Y-%m-%d %H:%M:%S")
+            if time_weather > time_user:
+                time_delta_tmp = (time_weather-time_user).seconds
+            else:
+                time_delta_tmp = (time_user-time_weather).seconds
+            if time_delta == 0 and index_f == 0:
+                time_delta = time_delta_tmp
+                index_f = index
+            if time_delta_tmp < time_delta:
+                index_f = index
+                time_delta = time_delta_tmp
+    if haveWeatherInfo :
+        return line[index_f][1:]
+    else:
+        return ["","","","","","",""]
+
+#add weather information
+def mapone(line):
+    line_list = []
+    for item in line:
+        if len(item) != 8:
+            weather = fine_weather(line,item[4])
+            item.extend(weather)
+            line_list.append(item)
+    return line_list
 
     
 if __name__ == "__main__":
     file_dir = "/home/xuepeng/Desktop/smarthome"
+    file_weather = "./china_dec_weather.txt"
     sc = SparkContext("local[20]", "First Spark App")
+    #original Data
     raw_data = sc.wholeTextFiles(file_dir)
-#     partitions = raw_data.getNumPartitions()
+    #weather information
+    data_weather = sc.textFile(file_weather).map(lambda line: line.split(","))\
+                     .map(lambda line:(line[0]+" "+line[1],line)).cache()
  
     if os.path.exists('./results.txt'):
         os.remove('./results.txt')
-    if os.path.exists('./output'):#modifyed by Xueping
-        shutil.rmtree('./output') #modifyed by Xueping
+    if os.path.exists('./final_results.txt'):
+        os.remove('./final_results.txt')
+    if os.path.exists('./first_results.txt'):
+        os.remove('./first_results.txt')
+#     if os.path.exists('./output_weather'):#modifyed by Xueping
+#         shutil.rmtree('./output_weather') #modifyed by Xueping
     raw_data.foreach(processfile)
 
-    sc.textFile('./results.txt').\
-        map(lambda line: line.split(",")).\
-        filter(filterone).map(lambda line:(line[0],line)).\
-        groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
-        map(lambda item: (str(len(item[1])),item[1])).\
-        flatMapValues(lambda item:item).map(addNoOfSequence).saveAsTextFile("./output")
+    firstStepData = sc.textFile('./results.txt').\
+                    map(lambda line: line.split(",")).\
+                    filter(filterone).map(lambda line:(line[0],line)).\
+                    groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
+                    map(lambda item: (str(len(item[1])),item[1])).\
+                    flatMapValues(lambda item:item).map(addNoToSequence)
+                                        
+    with codecs.open('first_results.txt',"a+","utf-8") as f1:
+        for item in firstStepData.collect():
+            string = ','.join(item).encode('utf8')
+            print >> f1,string.decode('utf8')
+    
+    secondStepData = firstStepData.map(lambda line:(line[-1]+" "+line[4][0:10],line)).union(data_weather)\
+                     .groupByKey().mapValues(list).filter(filterline).map(lambda line:line[1])\
+                     .flatMap(mapone).map(lambda line:(line[1]+" "+line[4],line)).sortByKey().map(lambda line:line[1])\
+#                      .map(lambda line:u",".join(line).encode('utf8')).collect()\
+#                      .saveAsTextFile("./output_weather")\
+                    
+    with codecs.open('final_results.txt',"w","utf-8") as f1:
+        for item in secondStepData.collect():
+            string = ','.join(item).encode('utf8')
+            print >> f1,string.decode('utf8')
+
 
     sc.stop()
