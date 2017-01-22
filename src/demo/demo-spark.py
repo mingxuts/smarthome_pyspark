@@ -133,11 +133,6 @@ def mapone(line):
             line_list.append(item)
     return line_list
 
-speed = {"auto":0,"silence":1,"low":2,"mid":3,"high":4,"super":5}
-direction = {"auto":0,"vdir":1,"hdir":2}
-mode = {"wind":0,"cool":1,"heat":2,"auto":3,"dehu":4}
-
-
 def dataPrepareStepOne(weatherList):
     
     sortList = sorted(weatherList,key = lambda item:item[2]) 
@@ -181,7 +176,11 @@ def filterTemp(item):
         return True
     else :
         return False
-    
+
+speed = {"auto":0,"silence":1,"low":2,"mid":3,"high":4,"super":5}
+direction = {"auto":0,"vdir":1,"hdir":2}
+mode = {"wind":0,"cool":1,"heat":2,"auto":3,"dehu":4}
+
 def transformer(item):
     item[0] = int(item[0])-24
     item[1] = int(item[1])-24
@@ -208,35 +207,39 @@ def labelPoints(item):
     
     
 if __name__ == "__main__":
-    file_dir = "/home/xuepeng/Desktop/smarthome"
-    file_weather = "/home/xuepeng/Desktop/weather/china_dec_weather.txt"
+#     data_file = "/home/xuepeng/data/smarthome/oct_data"
+#     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
+    
+    data_file = "/home/xuepeng/data/smarthome/dec_data"
+    weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
+    
     sc = SparkContext("local[20]", "First Spark App")
     #original Data
-    raw_data = sc.wholeTextFiles(file_dir)
+    raw_data = sc.wholeTextFiles(data_file)
     #weather information
-    data_weather = sc.textFile(file_weather).map(lambda line: line.split(","))\
+    weather_data = sc.textFile(weather_file).map(lambda line: line.split(","))\
                      .map(lambda line:(line[0]+" "+line[1],line)).cache()
 
-    firstStepData = raw_data.flatMap(processfile).\
+    finalDataWithoutWeather = raw_data.flatMap(processfile).\
                     filter(filterone).map(lambda line:(line[0],line)).\
                     groupByKey().mapValues(list).filter(lambda item:len(item[1]) > 3).\
                     map(lambda item: (str(len(item[1])),item[1])).\
                     flatMapValues(lambda item:item).map(addNoToSequence)
                                         
    
-    secondStepData = firstStepData.map(lambda line:(line[-1]+" "+line[4][0:10],line)).union(data_weather)\
+    finalDataWithWeather = finalDataWithoutWeather.map(lambda line:(line[-1]+" "+line[4][0:10],line)).union(weather_data)\
                      .groupByKey().mapValues(list).filter(filterline).map(lambda line:line[1])\
                      .flatMap(mapone).map(lambda line:(line[1]+" "+line[4],line)).sortByKey().map(lambda line:line[1])\
     
     #begin to run randomForests
-    stepOneData = secondStepData.map(lambda item :(item[1],item))\
+    features = finalDataWithWeather.map(lambda item :(item[1],item))\
                     .groupByKey().mapValues(list).map(lambda item:item[1])\
                     .flatMap(dataPrepareStepOne)
                     
-    data = stepOneData.filter(filterTemp).map(transformer).map(labelPoints)
+    labeledPoints = features.filter(filterTemp).map(transformer).map(labelPoints)
     
     # Split the data into training and test sets (30% held out for testing)
-    (trainingData, testData) = data.randomSplit([0.7, 0.3])
+    (trainingData, testData) = labeledPoints.randomSplit([0.7, 0.3])
 
     # Train a RandomForest model.
     #  Empty categoricalFeaturesInfo indicates all features are continuous.
@@ -250,8 +253,12 @@ if __name__ == "__main__":
     predictions = model.predict(testData.map(lambda x: x.features))
     labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
     testErr = labelsAndPredictions.filter(lambda lp: lp[0] != lp[1]).count() / float(testData.count())
-    print('Test Error = ' + str(testErr))
-    print('Learned classification forest model:')
+    
+    with codecs.open('results.txt',"w","utf-8") as f1:
+        string = 'Test_Error:' + str(testErr)
+        print >> f1,string.decode('utf8')
+    
+    print('Test_Error = ' + str(testErr))
 
 
     sc.stop()
