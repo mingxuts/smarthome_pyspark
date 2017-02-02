@@ -2,12 +2,14 @@
 #原始数据文件放在当前目录下的csv目录下，数据清洗最终结果会放在当前目录下的output目录下
 #程序运行方式（命令行方式）：／path／spark-summit etlstart.py
 
-import os, codecs
-from pyspark import  SparkContext
-import shutil
 from datetime import datetime
-from pyspark.mllib.tree import RandomForest
+import os
+from pyspark import SparkContext
+from pyspark.mllib.classification import LogisticRegressionWithLBFGS
 from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.tree import RandomForest, DecisionTree
+import sys, codecs
+
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
 def processfile(record):
@@ -205,15 +207,24 @@ def labelPoints(item):
         classLabel = item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15       
         return LabeledPoint(classLabel,item[0:13])
     
+def temperatureLabelPoints(item):     
+        return LabeledPoint(item[-1],item[0:13])
     
 if __name__ == "__main__":
 #     data_file = "/home/xuepeng/data/smarthome/oct_data"
 #     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
+
+    algorithm  = str(sys.argv[1])
     
+#     dataFile  = str(sys.argv[2])
+
     data_file = "/home/xuepeng/data/smarthome/dec_data"
     weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
     
-    sc = SparkContext("local[20]", "First Spark App")
+#     data_file = "/home/xuepeng/data/smarthome/oct_data"
+#     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
+    
+    sc = SparkContext("local[20]", "First_Spark_App")
     #original Data
     raw_data = sc.wholeTextFiles(data_file)
     #weather information
@@ -226,7 +237,6 @@ if __name__ == "__main__":
                     map(lambda item: (str(len(item[1])),item[1])).\
                     flatMapValues(lambda item:item).map(addNoToSequence)
                                         
-   
     finalDataWithWeather = finalDataWithoutWeather.map(lambda line:(line[-1]+" "+line[4][0:10],line)).union(weather_data)\
                      .groupByKey().mapValues(list).filter(filterline).map(lambda line:line[1])\
                      .flatMap(mapone).map(lambda line:(line[1]+" "+line[4],line)).sortByKey().map(lambda line:line[1])\
@@ -236,29 +246,84 @@ if __name__ == "__main__":
                     .groupByKey().mapValues(list).map(lambda item:item[1])\
                     .flatMap(dataPrepareStepOne)
                     
-    labeledPoints = features.filter(filterTemp).map(transformer).map(labelPoints)
+#     labeledPoints = features.filter(filterTemp).map(transformer).map(labelPoints)
+    labeledPoints = features.filter(filterTemp).map(transformer).map(temperatureLabelPoints)
+    
+    labelIndex = labeledPoints.map(lambda item : item.label).distinct().zipWithIndex().collect()
+    labelIndex = dict((key, value) for (key, value) in labelIndex)
+    labeledPoints = labeledPoints.map(lambda item : LabeledPoint(labelIndex[item.label],item.features))
+    
+    classNumber = len(labelIndex)
+    
+    print "class number is " + str(classNumber)
     
     # Split the data into training and test sets (30% held out for testing)
     (trainingData, testData) = labeledPoints.randomSplit([0.7, 0.3])
-
-    # Train a RandomForest model.
-    #  Empty categoricalFeaturesInfo indicates all features are continuous.
-    #  Note: Use larger numTrees in practice.
-    #  Setting featureSubsetStrategy="auto" lets the algorithm choose.
-    model = RandomForest.trainClassifier(trainingData, numClasses=448, categoricalFeaturesInfo={},
-                                         numTrees=5, featureSubsetStrategy="auto",
-                                         impurity='gini', maxDepth=10, maxBins=32)
-
-    # Evaluate model on test instances and compute test error
-    predictions = model.predict(testData.map(lambda x: x.features))
-    labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
-    testErr = labelsAndPredictions.filter(lambda lp: lp[0] != lp[1]).count() / float(testData.count())
     
-    with codecs.open('results.txt',"w","utf-8") as f1:
-        string = 'Test_Error:' + str(testErr)
-        print >> f1,string.decode('utf8')
+    if algorithm == "LogisticRegression": 
+#         numClasses  = int(sys.argv[2])
+        # Build the model
+        model = LogisticRegressionWithLBFGS.train(data=trainingData,numClasses=classNumber)
+        
+        # Evaluating the model on training data
+        labelsAndPreds = testData.map(lambda p: (p.label, model.predict(p.features)))
+        testErr = labelsAndPreds.filter(lambda (v, p): v != p).count() / float(testData.count())
+        with codecs.open('results.txt',"w","utf-8") as f1:
+            string = 'testErr:' + str(testErr)
+            print >> f1,string.decode('utf8')
     
-    print('Test_Error = ' + str(testErr))
+    elif algorithm == "DecisionTree": #DecisionTree 201612 gini 10 32 1 0
+#         numClasses  = int(sys.argv[2])
+        impurity  = str(sys.argv[3])
+        maxDepth  = int(sys.argv[4])
+        maxBins  = int(sys.argv[5])
+        minInstancesPerNode  = int(sys.argv[6])
+        minInfoGain  = float(sys.argv[7])
+        model = DecisionTree.trainClassifier(trainingData, numClasses=classNumber, categoricalFeaturesInfo={6:3,7:3,8:3,9:5,10:5,11:5},
+                                     impurity=impurity, maxDepth=maxDepth, maxBins=maxBins)
 
+        # Evaluate model on test instances and compute test error
+        predictions = model.predict(testData.map(lambda x: x.features))
+        labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
+        testErr = labelsAndPredictions.filter(lambda (v, p): v != p).count() / float(testData.count())
+        with codecs.open('results.txt',"w","utf-8") as f1:
+            string = 'testErr:' + str(testErr)
+            print >> f1,string.decode('utf8')
+            print >> f1,model.toDebugString
+            
+        print string
+        print model.toDebugString
+        if os.path.exists("output/DTModel"):
+            os.remove("output/DTModel")
+        model.save(sc, "output/DTModel")
+        
+    
+    else: #RandomForest 448 gini 10 32 1 0 20 auto
+        
+        numClasses  = int(sys.argv[2])
+        impurity  = str(sys.argv[3])
+        maxDepth  = int(sys.argv[4])
+        maxBins  = int(sys.argv[5])
+        minInstancesPerNode  = int(sys.argv[6])
+        minInfoGain  = float(sys.argv[7])
+        numTrees=int(sys.argv[8])
+        featureSubsetStrategy=str(sys.argv[9])
+
+        model = RandomForest.trainClassifier(trainingData, numClasses=classNumber, categoricalFeaturesInfo={6:3,7:3,8:3,9:5,10:5,11:5},
+                                             impurity=impurity, maxDepth=maxDepth, maxBins=maxBins,
+                                             numTrees=numTrees, featureSubsetStrategy=featureSubsetStrategy)
+    
+        # Evaluate model on test instances and compute test error
+        predictions = model.predict(testData.map(lambda x: x.features))
+        labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
+        testErr = labelsAndPredictions.filter(lambda lp: lp[0] != lp[1]).count() / float(testData.count())
+        
+        with codecs.open('results.txt',"w","utf-8") as f1:
+            string = 'Test_Error:' + str(testErr)
+            print >> f1,string.decode('utf8')
+            print >> f1,model.toDebugString
+        
+        print('Test_Error = ' + str(testErr) + "\n")
+        print(model)
 
     sc.stop()

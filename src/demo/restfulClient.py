@@ -17,16 +17,81 @@ from requests.exceptions import ConnectionError
 global jobFinished 
 
 
-def runAlgorithm(algorithm,parameter):
+def runAlgorithm(algorithm,parameter,filename):
     
-    status = subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]",algorithm])    
-    return status
+    if algorithm.lower() == "randomforest":
+        algorithm = "RandomForest"
+        ps = parameter.split(" ")
+#         numClasses  = ps[0].split("=")[1]
+        impurity  = ps[1].split("=")[1]
+        maxDepth  = ps[2].split("=")[1]
+        maxBins  = ps[3].split("=")[1]
+        minInstancesPerNode  = ps[4].split("=")[1]
+        minInfoGain  = ps[5].split("=")[1]
+        numTrees=ps[6].split("=")[1]
+        featureSubsetStrategy=ps[7].split("=")[1]
+        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","demo_spark.py", \
+                              algorithm, filename, impurity, maxDepth, maxBins, minInstancesPerNode, minInfoGain,numTrees,featureSubsetStrategy])
+    elif algorithm.lower() == "decisiontree":
+        algorithm = "DecisionTree"
+        ps = parameter.split(" ")
+        
+#         numClasses  = ps[0].split("=")[1]
+        impurity  = ps[1].split("=")[1]
+        maxDepth  = ps[2].split("=")[1]
+        maxBins  = ps[3].split("=")[1]
+        minInstancesPerNode  = ps[4].split("=")[1]
+        minInfoGain  = ps[5].split("=")[1]
+        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","demo_spark.py", \
+                               algorithm, filename, impurity, maxDepth, maxBins, minInstancesPerNode, minInfoGain])    
+    
+
+def deleteJobs():
+    
+    jobFinished = False
+    
+    jobURL = 'http://115.146.87.170/api/get_jobs'
+    
+    while True:
+        
+        myResponse = requests.get(jobURL)
+           
+        if(myResponse.ok):
+            if myResponse.content != "":
+                print myResponse.content
+                jData = json.loads(myResponse.content)
+                jobid = jData["id"]
+                algName = jData["algorithm"]
+#                 parameters = jData["parameter"]
+                
+#                 if parameters == "": #No parameters
+                jobFinished = False
+                #Send status
+                statusJson = {'jobid': jobid, 'percentage': 0,"display_name":algName}
+                requests.post("http://115.146.87.170/api/job_status", json=statusJson)
+                print str(jobid) + "  "+ algName +", no parameters!"
+                
+                #send result
+                text = "Should provide parameters! The job is killed!"
+                resultJson = {'jobid': jobid, "result":b64encode(text)}
+                requests.post("http://115.146.87.170/api/job_result", json=resultJson)
+                #set job status
+                jobFinished = True
+#                 else:
+#                     if jobFinished:
+#                         jobFinished = False
+#                         runJob(jobid, algName, parameters)
+        else:
+            myResponse.raise_for_status()
+            
+        jobFinished = percentage()[1]   
+        time.sleep(3)
 
 def getJobs():
     
     jobFinished = False
     
-    jobURL = 'http://localhost:8180/api/get_jobs'
+    jobURL = 'http://115.146.87.170/api/get_jobs'
     
     myResponse = requests.get(jobURL)
     if(myResponse.ok):
@@ -37,7 +102,8 @@ def getJobs():
             pre_jobid = jData["id"]
             pre_algName = jData["algorithm"]
             pre_parameters = jData["parameter"]
-            runJob(pre_jobid, pre_algName, pre_parameters)
+            pre_fileName = jData["filename"]
+            runJob(pre_jobid, pre_algName, pre_parameters,pre_fileName)
         else:
             jobFinished = True
     else:
@@ -54,15 +120,34 @@ def getJobs():
                 jobid = jData["id"]
                 algName = jData["algorithm"]
                 parameters = jData["parameter"]
+                fileName = jData["filename"]
                 
-                if jobFinished:
+                if parameters == "": #No parameters
                     jobFinished = False
-                    runJob(jobid, algName, parameters)
+                    #Send status
+                    statusJson = {'jobid': jobid, 'percentage': 0,"display_name":algName}
+                    requests.post("http://115.146.87.170/api/job_status", json=statusJson)
+                    print str(jobid) + "  "+ algName +", no parameters!"
+                    
+                    #send result
+                    text = "Should provide parameters! The job is killed!"
+                    resultJson = {'jobid': jobid, "result":b64encode(text)}
+                    requests.post("http://115.146.87.170/api/job_result", json=resultJson)
+                    #set job status
+                    jobFinished = True
+                else:
+                    if jobFinished:
+                        jobFinished = False
+                        runJob(jobid, algName, parameters,fileName)
         else:
             myResponse.raise_for_status()
             
         jobFinished = percentage()[1]   
+        
+        myResponse.close()
         time.sleep(3)
+        
+    
         
 def percentage():
     
@@ -110,8 +195,8 @@ def percentage():
 def loopPercentage(jobId,displayName):
     
     previousPercentage = 0.0
-    statusURL = "http://localhost:8180/api/job_status"
-    job_result = "http://localhost:8180/api/job_result"
+    statusURL = "http://115.146.87.170/api/job_status"
+    job_result = "http://115.146.87.170/api/job_result"
     
     while True:
         
@@ -135,9 +220,9 @@ def loopPercentage(jobId,displayName):
         
         time.sleep(3)         
 
-def runJob(jobid,algorithm,parameter):
+def runJob(jobid,algorithm,parameter,filename):
     
-    algThread = Thread(target=runAlgorithm, args=("demo-spark.py",parameter))
+    algThread = Thread(target=runAlgorithm, args=(algorithm,parameter,filename))
     algThread.start()
     
     time.sleep(6)
@@ -149,4 +234,5 @@ def runJob(jobid,algorithm,parameter):
 if __name__ == "__main__":
     
     getJobs()
+#     deleteJobs()
     

@@ -1,3 +1,5 @@
 eclipse.preferences.version=1
-encoding//src/demo/demo-spark.py=UTF-8
+encoding//src/demo/commandLine.py=UTF-8
+encoding//src/demo/demo_spark.py=UTF-8
+encoding//src/demo/smarthome_spark.py=UTF-8
 encoding//src/etl/sparkETL.py=UTF-8
