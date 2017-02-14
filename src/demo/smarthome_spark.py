@@ -5,10 +5,14 @@
 from datetime import datetime
 import os
 from pyspark import SparkContext
+from pyspark.ml.feature import StringIndexer, OneHotEncoder
 from pyspark.mllib.classification import LogisticRegressionWithLBFGS
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest, DecisionTree
+from pyspark.sql.session import SparkSession
 import sys, codecs
+
+import numpy as np
 
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
@@ -210,6 +214,26 @@ def labelPoints(item):
 def temperatureLabelPoints(item):     
         return LabeledPoint(item[-1],item[0:13])
     
+# INDEXING CATEGORICAL TEXT FEATURES FOR INPUT INTO LINEAR REGRESSION MODELS
+def parseRowOneHotRegression(line):
+    features = np.concatenate((np.array([line.temp1, line.temp2, line.temp3,
+                                        line.speed1, line.speed2, line.speed3, line.weather]), 
+                                        line.direction1Vec.toArray(), line.direction2Vec.toArray(), line.direction3Vec.toArray(),
+                                        line.mode1Vec.toArray(), line.mode2Vec.toArray(), line.mode3Vec.toArray()), axis=0)
+    labPt = LabeledPoint(line.temp, features)
+    return  labPt
+
+def indexAndEncode(processedData,features):
+    encodedFinal = processedData
+    for feature in features:
+        
+        stringIndexer = StringIndexer(inputCol=feature, outputCol=feature+"Index")
+        model = stringIndexer.fit(encodedFinal) # Input data-frame is the cleaned one from above
+        indexed = model.transform(encodedFinal)
+        encoder = OneHotEncoder(dropLast=False, inputCol=feature+"Index", outputCol=feature+"Vec")
+        encodedFinal = encoder.transform(indexed)
+    return encodedFinal
+    
 if __name__ == "__main__":
 #     data_file = "/home/xuepeng/data/smarthome/oct_data"
 #     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
@@ -218,13 +242,17 @@ if __name__ == "__main__":
     
 #     dataFile  = str(sys.argv[2])
 
-    data_file = "/home/xuepeng/data/smarthome/dec_data"
-    weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
+#     data_file = "/home/xuepeng/data/smarthome/dec_data"
+#     weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
     
-#     data_file = "/home/xuepeng/data/smarthome/oct_data"
-#     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
+    data_file = "/home/xuepeng/data/smarthome/oct_data"
+    weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
     
     sc = SparkContext("local[20]", "First_Spark_App")
+    spark = SparkSession \
+        .builder \
+        .appName("First_Spark_App") \
+        .getOrCreate()
     #original Data
     raw_data = sc.wholeTextFiles(data_file)
     #weather information
@@ -247,7 +275,8 @@ if __name__ == "__main__":
                     .flatMap(dataPrepareStepOne)
                     
 #     labeledPoints = features.filter(filterTemp).map(transformer).map(labelPoints)
-    labeledPoints = features.filter(filterTemp).map(transformer).map(temperatureLabelPoints)
+    transformedData = features.filter(filterTemp).map(transformer)
+    labeledPoints = transformedData.map(temperatureLabelPoints)
     
     labelIndex = labeledPoints.map(lambda item : item.label).distinct().zipWithIndex().collect()
     labelIndex = dict((key, value) for (key, value) in labelIndex)
@@ -261,7 +290,15 @@ if __name__ == "__main__":
     (trainingData, testData) = labeledPoints.randomSplit([0.7, 0.3])
     
     if algorithm == "LogisticRegression": 
-#         numClasses  = int(sys.argv[2])
+        processedData = transformedData.\
+        toDF(['temp1', 'temp2','temp3','speed1','speed2','speed3','direction1','direction2','direction3',\
+              'mode1','mode2','mode3','weather','speed','direction','mode','temp'])
+        
+        categoricalFeatures = ['direction1','direction2','direction3','mode1','mode2','mode3']
+        
+        labeledPoints = indexAndEncode(processedData,categoricalFeatures).rdd.map(parseRowOneHotRegression)
+        (trainingData, testData) = labeledPoints.randomSplit([0.7, 0.3])
+        
         # Build the model
         model = LogisticRegressionWithLBFGS.train(data=trainingData,numClasses=classNumber)
         
@@ -322,8 +359,13 @@ if __name__ == "__main__":
             string = 'Test_Error:' + str(testErr)
             print >> f1,string.decode('utf8')
             print >> f1,model.toDebugString
+            
+        if os.path.exists("output/RFModel"):
+            os.remove("output/RFModel")
+        model.save(sc, "output/RFModel")
+        
         
         print('Test_Error = ' + str(testErr) + "\n")
-        print(model)
+        print(model.toDebugString())
 
     sc.stop()
