@@ -219,13 +219,10 @@ def loopPercentage(jobId,displayName):
             
             if displayName.lower() == "decisiontree":
                 
-                files = {'file': open('output/decisionTree.c',"rb")}
-#                 c_file = codecs.open('output/decisionTree.c',"r","utf-8")
-#                 c_funcion = c_file.read()
-#                 resultFile = {'jobid': jobId,'file':b64encode(c_funcion)}
+                files = {'uploadedFile': codecs.open('output/decisionTree.c',"r","utf-8")}
                 resultFile = {'jobid': jobId}
-                requests.post(job_file, json=resultFile,files=files)
-                print "opload file"
+                response = requests.post(job_file, data=resultFile,files=files)
+                print response.text
             print "Job {0} is finished!".format(jobId)
             
             break
