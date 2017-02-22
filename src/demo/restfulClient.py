@@ -197,7 +197,8 @@ def loopPercentage(jobId,displayName):
     previousPercentage = 0.0
     statusURL = "http://115.146.87.170/api/job_status"
     job_result = "http://115.146.87.170/api/job_result"
-    
+    job_file = "http://115.146.87.170/api/upload_c_file"
+        
     while True:
         
         currentPercentage = percentage()[0]
@@ -212,8 +213,19 @@ def loopPercentage(jobId,displayName):
         if status:
             f1 = codecs.open('results.txt',"r","utf-8")
             text = f1.read()
+            
             resultJson = {'jobid': jobId, "result":b64encode(text)}
             requests.post(job_result, json=resultJson)
+            
+            if displayName.lower() == "decisiontree":
+                
+                files = {'file': open('output/decisionTree.c',"rb")}
+#                 c_file = codecs.open('output/decisionTree.c',"r","utf-8")
+#                 c_funcion = c_file.read()
+#                 resultFile = {'jobid': jobId,'file':b64encode(c_funcion)}
+                resultFile = {'jobid': jobId}
+                requests.post(job_file, json=resultFile,files=files)
+                print "opload file"
             print "Job {0} is finished!".format(jobId)
             
             break

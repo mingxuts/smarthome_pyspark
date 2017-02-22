@@ -2,12 +2,14 @@
 #原始数据文件放在当前目录下的csv目录下，数据清洗最终结果会放在当前目录下的output目录下
 #程序运行方式（命令行方式）：／path／spark-summit etlstart.py
 
-import sys,codecs
-from pyspark import SparkContext
 from datetime import datetime
-from pyspark.mllib.tree import RandomForest,DecisionTree
+import os
+from pyspark import SparkContext
 from pyspark.mllib.classification import LogisticRegressionWithLBFGS
 from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.tree import RandomForest, DecisionTree
+import sys, codecs
+
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
 def processfile(record):
@@ -204,6 +206,97 @@ def transformer(item):
 def labelPoints(item):
         classLabel = item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15       
         return LabeledPoint(classLabel,item[0:13])
+
+# Parser
+def parseToC(lines):
+    block = ''
+    while lines :
+        
+        if lines[0].startswith('If'):
+            line = lines.pop(0)
+            
+            if 'not in' in line:
+                line = line.replace('(', '').replace(')', '')
+                ln = line.split()[1:]
+                bl = 'if(strstr(\"' + ln[4].replace('{','').replace('}','')+ '\",' +ln[0]+ '['+ln[1]+'])==NULL)'
+            elif 'in' in line:
+                line = line.replace('(', '').replace(')', '')
+                ln = line.split()[1:]
+                bl = 'if(strstr(\"' + ln[3].replace('{','').replace('}','')+ '\",' +ln[0]+ '['+ln[1]+'])!=NULL)'
+            else:
+                ln = line.split()[1:]
+                bl = 'if(atof' + ln[0]+ '['+ln[1]+']) ' + ' '.join(ln[2:])
+            
+            block = block + bl + '{\n' + parseToC(lines) + '}'
+            
+            
+            if lines[0].startswith('Else'):
+                
+                line = lines.pop(0)
+            
+                if 'not in' in line:
+                    line = line.replace('(', '').replace(')', '')
+                    ln = line.split()[1:]
+                    bl = 'if(strstr(\"' + ln[4].replace('{','').replace('}','')+ '\",' +ln[0]+ '['+ln[1]+'])==NULL)'
+                elif 'in' in line:
+                    line = line.replace('(', '').replace(')', '')
+                    ln = line.split()[1:]
+                    bl = 'if(strstr(\"' + ln[3].replace('{','').replace('}','')+ '\",' +ln[0]+ '['+ln[1]+'])!=NULL)'
+                else:
+                    ln = line.split()[1:]
+                    bl = 'else if(atof' + ln[0]+ '['+ln[1]+']) ' + ' '.join(ln[2:])
+                
+                block = block + bl + '{\n' + parseToC(lines) + '}'
+        elif not lines[0].startswith(('If','Else')):
+            block2 = lines.pop(0).split()[1]
+            block = block + 'return ' + block2 +';'
+        else:
+            break    
+    return block
+
+# Convert Tree to C scripts
+def tree_C(tree):
+    
+    data = []
+    for line in tree.splitlines() : 
+        if line.strip():
+            line = line.strip()
+            data.append(line)
+        else : break
+        if not line : break
+    cStr  = parseToC(data[1:])
+    
+    if os.path.exists('output/decisionTree.c'):
+        os.remove('output/decisionTree.c')
+    
+    f2  = codecs.open('output/decisionTree.c',"a+","utf-8") 
+    
+    print >> f2,"#include <string.h>".decode('utf8')
+    print >> f2,"#include <stdlib.h>".decode('utf8')
+    print >> f2,"#include <stdio.h>".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    print >> f2,"float decisionTree(char feature[13][4]);".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    print >> f2,"int main(int argc, char * argv[]){".decode('utf8')
+    print >> f2,"    //feature discription:feature[0]-[2] are 3 latest temperatures, feature[3]-[5] are 3 latest wind speed,".decode('utf8')
+    print >> f2,"    //feature[6]-[8] are 3 latest wind direction,feature[9]-[11] are 3 latest mode,feature[12] is forecast temperature.".decode('utf8')
+    print >> f2,"    //the item value is the index of following map:".decode('utf8')
+    print >> f2,"    //The temperature range is between 24 and 28,so temperature={24:0,25:1,26:2,27:3,28:4}".decode('utf8')
+    print >> f2,"""    //speed = {"auto":0,"silence":1,"low":2,"mid":3,"high":4,"super":5}""".decode('utf8')
+    print >> f2,"""    //direction = {"auto":0,"vdir":1,"hdir":2}""".decode('utf8')
+    print >> f2,"""    //mode = {"wind":0,"cool":1,"heat":2,"auto":3,"dehu":4}""".decode('utf8')
+    print >> f2,"""    char feature[13][4]={"0.0", "0.0", "0.0", "2.0", "2.0", "3.0", "1.0", "3.0", "1.0", "2.0", "2.0", "2.0", "9.0"};""".decode('utf8')  
+    print >> f2,"""    printf("Predict result for input feature: %d",(int)decisionTree(feature));""".decode('utf8')
+    print >> f2,"    return 0;".decode('utf8')
+    print >> f2,"}".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    
+    print >> f2,"float decisionTree(char feature[13][4]){".decode('utf8')
+    print >> f2,cStr.decode('utf8')
+    print >> f2,"}".decode('utf8')
+    
+    print ('Conversion Success !')
+    f2.close()
     
     
 if __name__ == "__main__":
@@ -221,6 +314,7 @@ if __name__ == "__main__":
         dataset = "2016.12 Data"
     
     sc = SparkContext("local[20]", "First_Spark_App")
+#     sc.setLogLevel(newLevel)
     #original Data
     raw_data = sc.wholeTextFiles(data_file)
     #weather information
@@ -290,6 +384,12 @@ if __name__ == "__main__":
                      'test Error:' + str(testErr)+".<br/>" +\
                      "Number of classes for classification: " + str(classNumber)
             print >> f1,string.decode('utf8')
+        #generate C Function according to decision tree model   
+        dtModel = DecisionTree.trainClassifier(labeledPoints, numClasses=classNumber, categoricalFeaturesInfo={6:3,7:3,8:3,9:5,10:5,11:5},
+                                     impurity=impurity, maxDepth=maxDepth, maxBins=maxBins)
+        
+        dtree = dtModel.toDebugString() 
+        tree_C(dtree)
     
     else: #RandomForest 448 gini 10 32 1 0 10 auto
         

@@ -87,8 +87,6 @@ def tree_C(tree,resultsFile):
         os.remove(resultsFile)
     if os.path.exists('output/decisionTree.c'):
         os.remove('output/decisionTree.c')
-    if os.path.exists('output/main.c'):
-        os.remove('output/main.c')
     
     data = []
     f1  = codecs.open(resultsFile,"a+","utf-8")
@@ -102,34 +100,34 @@ def tree_C(tree,resultsFile):
     cStr  = parseToC(data[1:])
     
     f2  = codecs.open('output/decisionTree.c',"a+","utf-8") 
+    
     print >> f2,"#include <string.h>".decode('utf8')
     print >> f2,"#include <stdlib.h>".decode('utf8')
+    print >> f2,"#include <stdio.h>".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    print >> f2,"float decisionTree(char feature[13][4]);".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    print >> f2,"int main(int argc, char * argv[]){".decode('utf8')
+    print >> f2,"    //feature discription:feature[0]-[2] are 3 latest temperatures, feature[3]-[5] are 3 latest wind speed,".decode('utf8')
+    print >> f2,"    //feature[6]-[8] are 3 latest wind direction,feature[9]-[11] are 3 latest mode,feature[12] is forecast temperature.".decode('utf8')
+    print >> f2,"    //the item value is the index of following map:".decode('utf8')
+    print >> f2,"    //The temperature range is between 24 and 28,so temperature={24:0,25:1,26:2,27:3,28:4}".decode('utf8')
+    print >> f2,"""    //speed = {"auto":0,"silence":1,"low":2,"mid":3,"high":4,"super":5}""".decode('utf8')
+    print >> f2,"""    //direction = {"auto":0,"vdir":1,"hdir":2}""".decode('utf8')
+    print >> f2,"""    //mode = {"wind":0,"cool":1,"heat":2,"auto":3,"dehu":4}""".decode('utf8')
+    print >> f2,"""    char feature[13][4]={"0.0", "0.0", "0.0", "2.0", "2.0", "3.0", "1.0", "3.0", "1.0", "2.0", "2.0", "2.0", "9.0"};""".decode('utf8')  
+    print >> f2,"""    printf("Predict result for input feature: %d",(int)decisionTree(feature));""".decode('utf8')
+    print >> f2,"    return 0;".decode('utf8')
+    print >> f2,"}".decode('utf8')
+    print >> f2,"\n".decode('utf8')
+    
     print >> f2,"float decisionTree(char feature[13][4]){".decode('utf8')
     print >> f2,cStr.decode('utf8')
     print >> f2,"}".decode('utf8')
     
-    mainFuction  = codecs.open('output/main.c',"a+","utf-8") 
-    print >> mainFuction,"#include <string.h>".decode('utf8')
-    print >> mainFuction,"#include <stdlib.h>".decode('utf8')
-    print >> mainFuction,"#include <stdio.h>".decode('utf8')
-    print >> mainFuction,"float decisionTree(char feature[13][4]);".decode('utf8')
-    print >> mainFuction,"int main(int argc, char * argv[]){".decode('utf8')
-    print >> mainFuction,"//feature discription:feature[0]-[2] are 3 latest temperatures, feature[3]-[5] are 3 latest wind speed,".decode('utf8')
-    print >> mainFuction,"//feature[6]-[8] are 3 latest wind direction,feature[9]-[11] are 3 latest mode,feature[12] is forecast temperature.".decode('utf8')
-    print >> mainFuction,"//the item value is the index of following map:".decode('utf8')
-    print >> mainFuction,"//The temperature range is between 24 and 28,so temperature={24:0,25:1,26:2,27:3,28:4}".decode('utf8')
-    print >> mainFuction,"""//speed = {"auto":0,"silence":1,"low":2,"mid":3,"high":4,"super":5}""".decode('utf8')
-    print >> mainFuction,"""//direction = {"auto":0,"vdir":1,"hdir":2}""".decode('utf8')
-    print >> mainFuction,"""//mode = {"wind":0,"cool":1,"heat":2,"auto":3,"dehu":4}""".decode('utf8')
-    print >> mainFuction,"""char feature[13][4]={"0.0", "0.0", "0.0", "2.0", "2.0", "3.0", "1.0", "3.0", "1.0", "2.0", "2.0", "2.0", "9.0"};""".decode('utf8')  
-    print >> mainFuction,"""printf("Predict result for input feature: %d",(int)decisionTree(feature));""".decode('utf8')
-    print >> mainFuction,"return 0;".decode('utf8')
-    print >> mainFuction,"}".decode('utf8')
-    
     print ('Conversion Success !')
     f1.close()
     f2.close()
-    mainFuction.close()
 
 
 # Convert Tree to JSON
@@ -161,7 +159,7 @@ if __name__ == "__main__":
     dtModelFile = "output/DTModel"
     dtModelResults = "decisionTreeModel.txt"
 
-    sc = SparkContext(appName="DecisionTreeClassification")
+    sc = SparkContext("local[20]","DecisionTreeClassification")
     dtModel = DecisionTreeModel.load(sc, dtModelFile)
     dtree = dtModel.toDebugString() 
     print dtree
