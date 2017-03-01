@@ -11,6 +11,52 @@ from pyspark import SparkContext
 from pyspark.mllib.tree import DecisionTreeModel
 
 
+paths = ''
+# Parser
+def parse_rule(lines):
+    global paths
+    block = ''
+    while lines :
+        
+        if lines[0].startswith('If'):
+            bl = ' '.join(lines.pop(0).split()[1:]).replace('(', '').replace(')', '')
+            block = block + bl+"->" + parse_rule(lines)
+            print block.split('\n')[0]
+            print bl
+            
+            if lines[0].startswith('Else'):
+                be = ' '.join(lines.pop(0).split()[1:]).replace('(', '').replace(')', '')
+                block = block + be +" -> " + parse_rule(lines)
+        elif not lines[0].startswith(('If','Else')):
+            block2 = lines.pop(0)
+            block = block + block2 + "\n"
+        else:
+            break  
+    return block
+
+# Convert Tree to rule
+def tree_rule(tree,resultsFile):
+    data = []
+    if os.path.exists(resultsFile):
+        os.remove(resultsFile)
+        
+    f1  = codecs.open(resultsFile,"a+","utf-8")
+    for line in tree.splitlines() : 
+        if line.strip():
+            print >> f1,line.decode('utf8')
+            line = line.strip()
+            data.append(line)
+        else : break
+        if not line : break
+    rules = parse_rule(data[1:])
+    
+    f2  = codecs.open('output/structure.rule.txt',"w","utf-8") 
+    print >> f2,rules.decode('utf8')
+    
+    print ('Conversion Success !')
+    f1.close()
+    f2.close()
+
 # Parser
 def parse(lines):
     block = []
@@ -31,7 +77,34 @@ def parse(lines):
             break    
     return block
 
-global dicts
+# Convert Tree to JSON
+def tree_json(tree,resultsFile):
+    
+    if os.path.exists(resultsFile):
+        os.remove(resultsFile)
+    
+    data = []
+    f1  = codecs.open(resultsFile,"a+","utf-8")
+    for line in tree.splitlines() : 
+        if line.strip():
+            print >> f1,line.decode('utf8')
+            line = line.strip()
+            data.append(line)
+        else : break
+        if not line : break
+    res = []
+    res.append({'name':'Root', 'children':parse(data[1:])})
+    
+    with open('output/structure.json', 'w') as outfile:
+        json.dump(res[0], outfile)
+    print ('Conversion Success !')
+    f1.close()
+    outfile.close()
+    if os.path.exists('output/structure.rule.txt'):
+        os.remove('output/structure.rule.txt')
+    
+    walk(res,'')
+    
 
 # Parser
 def parseToC(lines):
@@ -130,29 +203,19 @@ def tree_C(tree,resultsFile):
     f2.close()
 
 
-# Convert Tree to JSON
-def tree_json(tree,resultsFile):
+def walk(list1, path = ""):
     
-    if os.path.exists(resultsFile):
-        os.remove(resultsFile)
+    f2  = codecs.open('output/structure.rule.txt',"a+","utf-8") 
     
-    data = []
-    f1  = codecs.open(resultsFile,"a+","utf-8")
-    for line in tree.splitlines() : 
-        if line.strip():
-            print >> f1,line.decode('utf8')
-            line = line.strip()
-            data.append(line)
-        else : break
-        if not line : break
-    res = []
-    res.append({'name':'Root', 'children':parse(data[1:])})
-    
-    with open('output/structure.json', 'w') as outfile:
-        json.dump(res[0], outfile)
-    print ('Conversion Success !')
-    f1.close()
-    outfile.close()
+    for dic in list1:
+        #print('about to walk', dic['name'], 'passing path -->', path)
+        if(len(dic['children']) == 1):
+            print >> f2, path+dic['name']+'->'+dic['children'][0]['name'].decode('utf8') 
+#             print(path+dic['name']+'->'+dic['children'][0]['name'])
+        else:
+            walk(dic['children'], path+dic['name']+'->')
+
+    f2.close()
     
 if __name__ == "__main__":
     
@@ -163,4 +226,6 @@ if __name__ == "__main__":
     dtModel = DecisionTreeModel.load(sc, dtModelFile)
     dtree = dtModel.toDebugString() 
     print dtree
-    tree_C(dtree,dtModelResults)
+#     tree_C(dtree,dtModelResults)
+    tree_json(dtree,dtModelResults)
+#     tree_rule(dtree,dtModelResults)
