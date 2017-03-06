@@ -10,6 +10,7 @@ from pyspark.mllib.classification import LogisticRegressionWithLBFGS
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest, DecisionTree
 from pyspark.sql.session import SparkSession
+import shutil
 import sys, codecs
 
 import numpy as np
@@ -208,7 +209,8 @@ def transformer(item):
     return item
     
 def labelPoints(item):
-        classLabel = item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15       
+        classLabel = item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15 
+#         classLabel = '{'+str(item[-1])+","+ str(item[-2]) +","+str(item[-3])+","+ str(item[-4])+'}' 
         return LabeledPoint(classLabel,item[0:13])
     
 def temperatureLabelPoints(item):     
@@ -241,12 +243,12 @@ if __name__ == "__main__":
     algorithm  = str(sys.argv[1])
     
 #     dataFile  = str(sys.argv[2])
-
-#     data_file = "/home/xuepeng/data/smarthome/dec_data"
-#     weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
+ 
+    data_file = "/home/xuepeng/data/smarthome/dec_data"
+    weather_file = "/home/xuepeng/data/smarthome/weather/dec_weather.txt"
     
-    data_file = "/home/xuepeng/data/smarthome/oct_data"
-    weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
+#     data_file = "/home/xuepeng/data/smarthome/oct_data"
+#     weather_file = "/home/xuepeng/data/smarthome/weather/oct_weather.txt"
     
     sc = SparkContext("local[20]", "First_Spark_App")
     spark = SparkSession \
@@ -276,11 +278,27 @@ if __name__ == "__main__":
                     
 #     labeledPoints = features.filter(filterTemp).map(transformer).map(labelPoints)
     transformedData = features.filter(filterTemp).map(transformer)
-    labeledPoints = transformedData.map(temperatureLabelPoints)
+    labeledPoints   = transformedData.map(labelPoints)
+#     labeledPoints   = transformedData.map(temperatureLabelPoints)
     
     labelIndex = labeledPoints.map(lambda item : item.label).distinct().zipWithIndex().collect()
     labelIndex = dict((key, value) for (key, value) in labelIndex)
     labeledPoints = labeledPoints.map(lambda item : LabeledPoint(labelIndex[item.label],item.features))
+    
+    if os.path.exists("finalDataset.txt"):
+            os.remove("finalDataset.txt")
+    finalDS =  codecs.open('finalDataset.txt',"a+","utf-8")
+    ds = labeledPoints.map(lambda item :  ','.join('{:.0f}'.format(x) for x in item.features)+"#"+str('{:.0f}'.format(item.label))).collect()
+    finalDS.write('\n'.join(ds))
+    finalDS.close()
+    
+    labelEncode = transformedData.map(lambda item : str(labelIndex[item[-1]*90+ item[-2]*1+item[-3]*5+item[-4]*15])+":"+
+                                      '{'+str(item[-1])+","+ str(item[-2]) +","+str(item[-3])+","+ str(item[-4])+'}')\
+                                      .distinct().collect()
+
+    lcFile =  codecs.open('labelEncoder.txt',"w","utf-8")
+    lcFile.write('\n'.join(labelEncode))
+    lcFile.close()
     
     classNumber = len(labelIndex)
     
@@ -330,9 +348,12 @@ if __name__ == "__main__":
             
         print string
         print model.toDebugString
+        
+        dtModel = DecisionTree.trainClassifier(labeledPoints, numClasses=classNumber, categoricalFeaturesInfo={6:3,7:3,8:3,9:5,10:5,11:5},
+                                     impurity=impurity, maxDepth=maxDepth, maxBins=maxBins)
         if os.path.exists("output/DTModel"):
-            os.remove("output/DTModel")
-        model.save(sc, "output/DTModel")
+            shutil.rmtree("output/DTModel")
+        dtModel.save(sc, "output/DTModel")
         
     
     else: #RandomForest 448 gini 10 32 1 0 20 auto

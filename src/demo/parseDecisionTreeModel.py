@@ -100,8 +100,8 @@ def tree_json(tree,resultsFile):
     print ('Conversion Success !')
     f1.close()
     outfile.close()
-    if os.path.exists('output/structure.rule.txt'):
-        os.remove('output/structure.rule.txt')
+    if os.path.exists('output/structure_rule.txt'):
+        os.remove('output/structure_rule.txt')
     
     walk(res,'')
     
@@ -205,15 +205,31 @@ def tree_C(tree,resultsFile):
 
 def walk(list1, path = ""):
     
-    f2  = codecs.open('output/structure.rule.txt',"a+","utf-8") 
+    f2  = codecs.open('output/structure_rule.txt',"a+","utf-8") 
     
     for dic in list1:
         #print('about to walk', dic['name'], 'passing path -->', path)
         if(len(dic['children']) == 1):
-            print >> f2, path+dic['name']+'->'+dic['children'][0]['name'].decode('utf8') 
-#             print(path+dic['name']+'->'+dic['children'][0]['name'])
+            paths = path+dic['name']+':'+dic['children'][0]['name']
+                    
+            paths = paths\
+                    .replace('.0','')\
+                    .replace('feature ','')\
+                    .replace('Predict: ','#')\
+                    .replace('not in','5')\
+                    .replace(' ','|')\
+                    .replace('in','4')\
+                    .replace('>=','0')\
+                    .replace('<=','1')\
+                    .replace('>','2')\
+                    .replace('<','3')\
+                    .replace('Root:','')
+            print >> f2, paths.decode('utf8') 
+
         else:
-            walk(dic['children'], path+dic['name']+'->')
+            walk(dic['children'], path+dic['name']+':')
+            
+           
 
     f2.close()
     

@@ -219,7 +219,7 @@ def loopPercentage(jobId,displayName):
             
             if displayName.lower() == "decisiontree":
                 
-                files = {'uploadedFile': codecs.open('output/decisionTree.c',"r","utf-8")}
+                files = {'uploadedFile': codecs.open('output/structure_rule.txt',"r","utf-8")}
                 resultFile = {'jobid': jobId}
                 response = requests.post(job_file, data=resultFile,files=files)
                 print response.text
