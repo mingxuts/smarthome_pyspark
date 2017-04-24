@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 #原始数据文件放在当前目录下的csv目录下，数据清洗最终结果会放在当前目录下的output目录下
-#程序运行方式（命令行方式）：／path／spark-summit etlstart.py
+#程序运行方式（命令行方式）：
 
 from datetime import datetime
 import json
@@ -10,8 +10,6 @@ from pyspark.mllib.classification import LogisticRegressionWithLBFGS
 from pyspark.mllib.regression import LabeledPoint
 from pyspark.mllib.tree import RandomForest, DecisionTree
 import sys, codecs
-
-
 
 #生成中间文件（类似于数据库中格式），并存储到results.txt文件中
 def processfile(record):
@@ -25,7 +23,6 @@ def processfile(record):
     first_data_record = []  #modifyed by Xueping
     count = 0
     
-
     for item in line_list:#for each user information
         if item == '':
             break
@@ -257,6 +254,51 @@ def tree_json(tree,resultsFile,labelEncodeIndex):
         os.remove('output/structure_rule.txt')
     walk(res,labelEncodeIndex,path='')
     
+    # Convert Tree to JSON
+def forest_json(tree,resultsFile,labelEncodeIndex):
+        
+    lines= tree.splitlines()
+    lines.pop(0)
+    lines.pop(0)
+#     lines.pop(0)
+    
+    if os.path.exists(resultsFile):
+        os.remove(resultsFile)
+    if os.path.exists('output/structure.json'):
+        os.remove('output/structure.json')
+    if os.path.exists('output/structure_rule.txt'):
+        os.remove('output/structure_rule.txt')
+    
+    data = []
+    num = 1
+    
+    f1  = codecs.open(resultsFile,"a+","utf-8")
+    for line in lines: 
+        line = line.strip()
+        print >> f1,line.decode('utf8')
+        
+        if line.startswith('Tree 0'):
+            print "Tree0"
+        elif line.startswith('Tree'):
+            res = []
+            res.append({'name':'Root', 'children':parse(data[1:])})
+            f2  = codecs.open('output/structure_rule.txt',"a+","utf-8")
+            print >> f2, "Tree"+str(num) + ":".decode('utf8')
+            print "Tree"+str(num)
+            f2.close()
+            del data[:]
+            walk(res,labelEncodeIndex,path='')
+            num = num + 1
+        data.append(line)
+        
+    res = []
+    res.append({'name':'Root', 'children':parse(data[1:])})
+    f2  = codecs.open('output/structure_rule.txt',"a+","utf-8")
+    print >> f2, "Tree"+str(num)+":".decode('utf8')
+    f2.close()
+    print "Tree"+str(num)
+    walk(res,labelEncodeIndex,path='')
+    f1.close()
     
 def walk(list1,labelEncodeIndex, path = ""):
     
@@ -292,7 +334,7 @@ def walk(list1,labelEncodeIndex, path = ""):
     
 if __name__ == "__main__":
 
-    algorithm  = str(sys.argv[1])
+    algorithm  = str(sys.argv[1]) # 
     filename  = str(sys.argv[2])
     dataset = ""
     if filename == "201610":
@@ -343,12 +385,12 @@ if __name__ == "__main__":
                                       .map(lambda item :(item.split(":")[0],item.split(":")[1])).collect()
     labelEncodeIndex = dict((key, value) for (key, value) in labelEncode)
     
-    if os.path.exists("finalDataset.txt"):
-            os.remove("finalDataset.txt")
-    finalDS =  codecs.open('finalDataset.txt',"a+","utf-8")
-    ds = labeledPoints.map(lambda item :  ','.join('{:.0f}'.format(x) for x in item.features)+"#"+labelEncodeIndex[str('{:.0f}'.format(item.label))]).collect()
-    finalDS.write('\n'.join(ds))
-    finalDS.close()
+#     if os.path.exists("finalDataset.txt"):
+#             os.remove("finalDataset.txt")
+#     finalDS =  codecs.open('finalDataset.txt',"a+","utf-8")
+#     ds = labeledPoints.map(lambda item :  ','.join('{:.0f}'.format(x) for x in item.features)+"#"+labelEncodeIndex[str('{:.0f}'.format(item.label))]).collect()
+#     finalDS.write('\n'.join(ds))
+#     finalDS.close()
 
     print "Number of classes for classification: " + str(classNumber)
     
@@ -424,5 +466,15 @@ if __name__ == "__main__":
         
         print('Test_Error = ' + str(testErr) + "\n")
         print(model)
+        
+        rfModel = RandomForest.trainClassifier(labeledPoints, numClasses=classNumber, categoricalFeaturesInfo={6:3,7:3,8:3,9:5,10:5,11:5},
+                                             impurity=impurity, maxDepth=maxDepth, maxBins=maxBins,
+                                             numTrees=numTrees, featureSubsetStrategy=featureSubsetStrategy)
+#         if os.path.exists("output/RFModel"):
+#             os.remove("output/RFModel")
+#         rfModel.save(sc, "output/RFModel")
+        rfModelResults = "randomForestModel.txt"
+        rfTrees = rfModel.toDebugString() 
+        forest_json(rfTrees,rfModelResults,labelEncodeIndex)
 
     sc.stop()

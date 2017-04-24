@@ -2,3 +2,5 @@
 /results.txt
 /output/
 /randomForestTreeModel.txt
+/spark-warehouse/
+/visualization/

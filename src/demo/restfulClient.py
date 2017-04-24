@@ -30,7 +30,7 @@ def runAlgorithm(algorithm,parameter,filename):
         minInfoGain  = ps[5].split("=")[1]
         numTrees=ps[6].split("=")[1]
         featureSubsetStrategy=ps[7].split("=")[1]
-        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","demo_spark.py", \
+        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","Models_spark.py", \
                               algorithm, filename, impurity, maxDepth, maxBins, minInstancesPerNode, minInfoGain,numTrees,featureSubsetStrategy])
     elif algorithm.lower() == "decisiontree":
         algorithm = "DecisionTree"
@@ -42,7 +42,7 @@ def runAlgorithm(algorithm,parameter,filename):
         maxBins  = ps[3].split("=")[1]
         minInstancesPerNode  = ps[4].split("=")[1]
         minInfoGain  = ps[5].split("=")[1]
-        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","demo_spark.py", \
+        subprocess.check_call(["/home/xuepeng/spark-2.1.0-bin-hadoop2.7/bin/spark-submit","--master","local[20]","Models_spark.py", \
                                algorithm, filename, impurity, maxDepth, maxBins, minInstancesPerNode, minInfoGain])    
     
 
@@ -62,9 +62,7 @@ def deleteJobs():
                 jData = json.loads(myResponse.content)
                 jobid = jData["id"]
                 algName = jData["algorithm"]
-#                 parameters = jData["parameter"]
                 
-#                 if parameters == "": #No parameters
                 jobFinished = False
                 #Send status
                 statusJson = {'jobid': jobid, 'percentage': 0,"display_name":algName}
@@ -77,10 +75,6 @@ def deleteJobs():
                 requests.post("http://115.146.87.170/api/job_result", json=resultJson)
                 #set job status
                 jobFinished = True
-#                 else:
-#                     if jobFinished:
-#                         jobFinished = False
-#                         runJob(jobid, algName, parameters)
         else:
             myResponse.raise_for_status()
             
@@ -188,8 +182,6 @@ def percentage():
     
     except ConnectionError:
         return (100,True)
-        
-    
 
 
 def loopPercentage(jobId,displayName):
@@ -217,12 +209,12 @@ def loopPercentage(jobId,displayName):
             resultJson = {'jobid': jobId, "result":b64encode(text)}
             requests.post(job_result, json=resultJson)
             
-            if displayName.lower() == "decisiontree":
+#             if displayName.lower() == "decisiontree":
                 
-                files = {'uploadedFile': codecs.open('output/structure_rule.txt',"r","utf-8")}
-                resultFile = {'jobid': jobId}
-                response = requests.post(job_file, data=resultFile,files=files)
-                print response.text
+            files = {'uploadedFile': codecs.open('output/structure_rule.txt',"r","utf-8")}
+            resultFile = {'jobid': jobId}
+            response = requests.post(job_file, data=resultFile,files=files)
+            print response.text
             print "Job {0} is finished!".format(jobId)
             
             break
@@ -244,4 +236,5 @@ if __name__ == "__main__":
     
     getJobs()
 #     deleteJobs()
+
     
